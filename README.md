@@ -9,4 +9,4 @@ We assessed the impact of VO2max and BMI on the probability of improving the IPA
 We explored the relationships between all collected variables to identify significant patterns and associations.
 #### Multiple Linear Regressions: 
 We investigated the combined influences of multiple variables on specific health outcomes, allowing for a more comprehensive analysis of the determinants of recovery.
-Key Results
+
