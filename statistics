@@ -13,6 +13,10 @@ df$uti = as.factor(df$uti)
 df$altura_m = round(df$altura_m,2)
 df$imc = round(df$imc,2)
 df$addenbrooke_memoria_percent = round(df$addenbrooke_memoria_percent*100,2)
+df$addenbrooke_atencao_orientacao_percent = round(df$addenbrooke_atencao_orientacao_percent*100,2)
+df$addenbrooke_fluencia_percent = round(df$addenbrooke_fluencia_percent*100,2)
+df$addenbrooke_linguagem_percent = round(df$addenbrooke_linguagem_percent*100,2)
+df$addenbrooke_visual_espacial_percent = round(df$addenbrooke_visual_espacial_percent*100,2)
 df$ipaq_questionario <- factor(df$ipaq_questionario, 
                                levels = c("sedentario(a)", "insulficientemente_ativo(a)", 
                                           "ativo(a)", "muito_ativo(a)"),
@@ -176,7 +180,8 @@ j = glm(factor(IPAQ) ~ VO2max + factor(Gender) + BMI, family = "binomial", df2.1
 k = glm(factor(IPAQ) ~ VO2max + factor(Gender) + Age, family = "binomial", df2.1)
 l = glm(factor(IPAQ) ~ VO2max + factor(Gender) + LOS, family = "binomial", df2.1)
   
-compare_performance(a,b,c,d,e,f,g,h,i,j,l,rank = TRUE,verbose = TRUE)
+result1 = compare_performance(a,b,c,d,e,f,g,h,i,j,l,rank = TRUE,verbose = TRUE) %>% as.data.frame()
+writexl::write_xlsx(result1,path = "result1.xlsx")
 
 # Calcular as odds ratios
 odds_ratios <- exp(coef(e))
@@ -208,3 +213,163 @@ df3.1$date_of_covid_19_test = NULL
 df3.1$entubacao = NULL
 df3.1$dias_uti = NULL
 
+renomear_colunas2 <- function(df3.1) {
+  colnames(df3.1) <- c("Gender", "Height", "Weight", "BMI", "BMI_Class", "Age", "VO2max",
+                     "Addenbro_score", "Addenbro_attent", 
+                     "Addenbro_attent_perc", "Addenbro_memo",
+                     "Addenbro_memo_perc", "Addenbro_flue", 
+                     "Addenbro_flue_perc", "Addenbro_lang", 
+                     "Addenbro_lang_perc", "Addenbro_visuos",
+                     "Addenbro_visuos_perc", "LOS", "ICU")
+  return(df3.1)
+}
+
+
+# Aplicar função de renomeação ao dataset
+df3.1 <- renomear_colunas2(df3.1)
+
+# Criar matriz de correlação e plotar
+model.matrix(~0+., data=df3.1) %>%
+  cor(use="pairwise.complete.obs") %>%
+  ggcorrplot(show.diag=FALSE, type="lower", lab=TRUE, lab_size=2)
+
+
+# Identificar as variáveis que começam com "Addenbrooke" e terminam com "percent"
+addenbrooke_vars <- grep("^addenbrooke.*percent$", names(df), value = TRUE)
+
+# Função para criar os gráficos
+create_plot <- function(var_name, var_label) {
+  cor_test <- cor.test(df[[var_name]], df$vo2max)
+  
+  ggplot(df, aes_string(x = var_name, y = "vo2max")) +
+    geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+    stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+    geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+    labs(x = var_label, y = "VO2 Max") +
+    theme(
+      axis.title.x = element_text(face = "bold"),
+      axis.title.y = element_text(face = "bold")
+    ) +
+    annotate("text", x = 25, y = max(df$vo2max) - 10, 
+             label = paste("Correlation: ", round(cor_test$estimate, 3), 
+                           "\n p-value: ", format_p(cor_test$p.value, digits = 2)),
+             size = 5, hjust = 0) +
+    theme_classic()
+}
+
+# Variáveis e labels
+var_names <- c("addenbrooke_atencao_orientacao_percent", 
+               "addenbrooke_memoria_percent", 
+               "addenbrooke_fluencia_percent", 
+               "addenbrooke_linguagem_percent", 
+               "addenbrooke_visual_espacial_percent")
+
+var_labels <- c("Addenbrooke - Attention (%)", 
+                "Addenbrooke - Memory (%)", 
+                "Addenbrooke - Fluency (%)", 
+                "Addenbrooke - Language (%)", 
+                "Addenbrooke - Visual-Spatial (%)")
+
+# Criar gráficos
+plots <- lapply(seq_along(var_names), function(i) {
+  create_plot(var_names[i], var_labels[i]) + labs(title = letters[i])
+})
+
+# Combinar gráficos com patchwork
+combined_plot <- wrap_plots(plots, ncol = 2)
+
+# Exibir o plot combinado
+print(combined_plot)
+
+
+cor_test3 <- cor.test(df3.1$Addenbro_score, df3.1$VO2max)
+
+
+ggplot(df3.1, aes(x = Addenbro_score, y = VO2max)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Adiciona jitter para melhor visualização dos pontos
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "Addenbrooke - General score", y = "VO2 Max") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  annotate("text", x = 60, y = max(df$vo2max) - 2, 
+           label = paste("Correlation: ", round(cor_test3$estimate, 3), 
+                         "\n p-value: ", format_p(cor_test3$p.value, digits = 2)),
+           size = 5, hjust = 0)+
+  theme_classic()
+
+# Supondo que df3.1 já esteja carregado no ambiente
+# df3.1 <- read_csv("path_to_your_data.csv") # Ajuste esta linha para carregar seus dados reais
+
+# Garantir que variáveis categóricas sejam fatores
+df3.1 <- df3.1 %>%
+  mutate(Gender = as.factor(Gender),
+         ICU = as.factor(ICU))
+
+# Identificar todas as variáveis dependentes que começam com "Addenbro"
+dependent_vars <- names(df3.1)[grepl("^Addenbro", names(df3.1))]
+
+# Definir variáveis independentes, excluindo aquelas que começam com "Addenbro"
+independent_vars <- setdiff(names(df3.1), dependent_vars)
+
+# Função para criar fórmula para GLM
+create_formula <- function(dependent, independents) {
+  paste(dependent, "~", paste(independents, collapse = " + "))
+}
+
+# Inicializar lista para armazenar resultados dos modelos
+model_results <- list()
+
+# Inicializar lista para armazenar resultados dos modelos
+model_results <- list()
+
+# Criar e avaliar GLM para cada variável dependente
+for (dep_var in dependent_vars) {
+  # Incluir VO2max e criar fórmula
+  independent_vars_with_vo2max <- c(independent_vars, "VO2max")
+  formula <- as.formula(create_formula(dep_var, independent_vars_with_vo2max))
+  
+  # Ajustar modelo
+  model <- glm(formula, data = df3.1, family = gaussian)
+  
+  # Avaliar desempenho do modelo
+  model_performance <- performance::model_performance(model)
+  
+  # Obter coeficientes, intervalos de confiança e valores p
+  coefs <- summary(model)$coefficients
+  confints <- confint(model)
+  
+  # Armazenar resultados
+  model_results[[dep_var]] <- list(
+    model = model,
+    performance = model_performance,
+    coefs = coefs,
+    confints = confints
+  )
+}
+
+# Criar um dataframe para armazenar os resultados de desempenho dos modelos
+model_performance_df <- do.call(rbind, lapply(names(model_results), function(dep_var) {
+  coefs <- model_results[[dep_var]]$coefs
+  confints <- model_results[[dep_var]]$confints
+  data.frame(
+    dependent_var = dep_var,
+    term = rownames(coefs),
+    estimate = coefs[, "Estimate"],
+    std_error = coefs[, "Std. Error"],
+    p_value = coefs[, "Pr(>|t|)"],
+    conf_low = confints[, 1],
+    conf_high = confints[, 2],
+    AIC = model_results[[dep_var]]$performance$AIC
+  )
+}))
+
+# Classificar os modelos pelo AIC
+model_performance_df <- model_performance_df %>%
+  arrange(AIC) %>%
+  group_by(dependent_var) %>%
+  mutate(rank = row_number())
+
+writexl::write_xlsx(model_performance_df, "model_details.xlsx")
