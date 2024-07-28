@@ -1,0 +1,210 @@
+pacman::p_load(readxl, ggplot2, tidyverse, janitor, 
+               gtsummary, ggcorrplot, ggpubr, performance)
+
+setwd("C:/Users/renato.stein/Downloads")
+
+df = read_excel("covid_vo2.xlsx")
+
+df = clean_names(df)
+df$genero_participante = as.factor(df$genero_participante)
+df$ipaq_questionario = as.factor(df$ipaq_questionario)
+df$entubacao = as.factor(df$entubacao)
+df$uti = as.factor(df$uti)
+df$altura_m = round(df$altura_m,2)
+df$imc = round(df$imc,2)
+df$addenbrooke_memoria_percent = round(df$addenbrooke_memoria_percent*100,2)
+df$ipaq_questionario <- factor(df$ipaq_questionario, 
+                               levels = c("sedentario(a)", "insulficientemente_ativo(a)", 
+                                          "ativo(a)", "muito_ativo(a)"),
+                               labels = c("Sedentary", "Insufficiently Active", "Active", "Very Active"))
+
+
+# Criar tabela de resumo
+demo <- df %>%
+  tbl_summary(
+    include = c("genero_participante", "idade", "imc", "altura_m", "peso_kg",
+                "vo2max", "dias_internacao", "uti"),
+    by = NULL, # Remover agrupamento por uma variável
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})", # Média e desvio padrão para variáveis contínuas
+      all_categorical() ~ "{n} ({p})"   # Contagem e porcentagem para variáveis categóricas
+    ),
+    label = list(
+      genero_participante ~ "Sex, n (%)",
+      idade ~ "Age",
+      altura_m ~ "Height - m",
+      peso_kg ~ "Weight - kg",
+      imc ~ "BMI",
+      vo2max ~ "VO2 - Max",
+      dias_internacao ~ "LOS",
+      uti ~ "ICU, n (%)"
+    ),
+    value = list(genero_participante~"1",
+                 uti~"1"),
+    missing = "no" # Excluir missing
+  ) %>%
+  bold_labels() %>%
+  as_flex_table()
+
+# Exibir tabela
+demo
+
+flextable::save_as_docx(demo,path = "table_demo.docx")
+
+df1 = df
+df1$id_participante = NULL
+df1$data_de_nascimento = NULL
+df1$other_pre_existing_medical_conditions = NULL
+df1$date_of_covid_19_test = NULL
+df1$entubacao = NULL
+df1$dias_uti = NULL
+
+# Renomear colunas
+renomear_colunas <- function(df1) {
+  colnames(df1) <- c("Gender", "Height", "Weight", "BMI", "BMI_Class", "Age", "VO2max",
+                    "IPAQ", "Addenbro_score", "Addenbro_attent", 
+                    "Addenbro_attent_perc", "Addenbro_memo",
+                    "Addenbro_memo_perc", "Addenbro_flue", 
+                    "Addenbro_flue_perc", "Addenbro_lang", 
+                    "Addenbro_lang_perc", "Addenbro_visuos",
+                    "Addenbro_visuos_perc", "LOS", "ICU")
+  return(df1)
+}
+
+# Aplicar função de renomeação ao dataset
+df1 <- renomear_colunas(df1)
+
+# Criar matriz de correlação e plotar
+model.matrix(~0+., data=df1) %>%
+  cor(use="pairwise.complete.obs") %>%
+  ggcorrplot(show.diag=FALSE, type="lower", lab=TRUE, lab_size=2)
+
+
+#Correlation 1 - VO2 - MAX vs IPAQ
+
+cor_test1 <- cor.test(as.numeric(df$ipaq_questionario), df$vo2max)
+
+fig1 = ggplot(df, aes(x = ipaq_questionario, y = vo2max)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Adiciona jitter para melhor visualização dos pontos
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "IPAQ Questionnaire", y = "VO2 Max") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  annotate("text", x = 0.6, y = max(df$vo2max) - 2, 
+           label = paste("Correlation: ", round(cor_test1$estimate, 3), 
+                         "\n p-value: ", format_p(cor_test1$p.value, digits = 2)),
+           size = 5, hjust = 0)+
+  theme_classic()
+
+#Correlation 2 
+
+cor_test2 <- cor.test(df$addenbrooke_memoria_percent, df$vo2max)
+  
+
+fig2 = ggplot(df, aes(x = addenbrooke_memoria_percent, y = vo2max)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Adiciona jitter para melhor visualização dos pontos
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "Addenbrooke - Memory (%)", y = "VO2 Max") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  annotate("text", x = 25, y = max(df$vo2max) - 2, 
+           label = paste("Correlation: ", round(cor_test2$estimate, 3), 
+                         "\n p-value: ", format_p(cor_test2$p.value, digits = 2)),
+           size = 5, hjust = 0)+
+  theme_classic()
+
+
+
+# Criação de df2: todas as variáveis exceto aquelas de addenbrooke
+df2 <- df %>% 
+  select(-starts_with("Addenbro"))
+
+# Criação de df3: todas as variáveis exceto ipaq
+df3 <- df %>% 
+  select(-ipaq_questionario)
+
+# Verificando a estrutura dos novos dataframes
+str(df2)
+str(df3)
+
+df2.1 = df2
+df2.1$id_participante = NULL
+df2.1$data_de_nascimento = NULL
+df2.1$other_pre_existing_medical_conditions = NULL
+df2.1$date_of_covid_19_test = NULL
+df2.1$entubacao = NULL
+df2.1$dias_uti = NULL
+
+renomear_colunas1 <- function(df2.1) {
+  colnames(df2.1) <- c("Gender", "Height", "Weight", "BMI", "BMI_Class", "Age", "VO2max",
+                     "IPAQ", "LOS", "ICU")
+  return(df2.1)
+}
+
+# Aplicar função de renomeação ao dataset
+df2.1 <- renomear_colunas1(df2.1)
+
+# Criar matriz de correlação e plotar
+model.matrix(~0+., data=df2.1) %>%
+  cor(use="pairwise.complete.obs") %>%
+  ggcorrplot(show.diag=FALSE, type="lower", lab=TRUE, lab_size=2)
+
+# Listar combinações de variáveis independentes
+test = glm(factor(IPAQ) ~ factor(Gender), family = "binomial", df2.1)
+test1 = glm(factor(IPAQ) ~ Height, family = "binomial", df2.1)
+test2 = glm(factor(IPAQ) ~ Weight, family = "binomial", df2.1)
+test3 = glm(factor(IPAQ) ~ BMI, family = "binomial", df2.1)
+test4 = glm(factor(IPAQ) ~ Age, family = "binomial", df2.1)
+test5 = glm(factor(IPAQ) ~ LOS, family = "binomial", df2.1)
+
+a = glm(factor(IPAQ) ~ VO2max, family = "binomial", df2.1)
+b = glm(factor(IPAQ) ~ VO2max + factor(Gender), family = "binomial", df2.1)
+c = glm(factor(IPAQ) ~ VO2max + Height, family = "binomial", df2.1)
+d = glm(factor(IPAQ) ~ VO2max + Weight, family = "binomial", df2.1)
+e = glm(factor(IPAQ) ~ VO2max + BMI, family = "binomial", df2.1)
+f = glm(factor(IPAQ) ~ VO2max + Age, family = "binomial", df2.1)
+g = glm(factor(IPAQ) ~ VO2max + LOS, family = "binomial", df2.1)
+h = glm(factor(IPAQ) ~ VO2max + factor(Gender) + Height, family = "binomial", df2.1)
+i = glm(factor(IPAQ) ~ VO2max + factor(Gender) + Weight, family = "binomial", df2.1)
+j = glm(factor(IPAQ) ~ VO2max + factor(Gender) + BMI, family = "binomial", df2.1)
+k = glm(factor(IPAQ) ~ VO2max + factor(Gender) + Age, family = "binomial", df2.1)
+l = glm(factor(IPAQ) ~ VO2max + factor(Gender) + LOS, family = "binomial", df2.1)
+  
+compare_performance(a,b,c,d,e,f,g,h,i,j,l,rank = TRUE,verbose = TRUE)
+
+# Calcular as odds ratios
+odds_ratios <- exp(coef(e))
+
+# Calcular os intervalos de confiança das odds ratios
+conf_int <- exp(confint(e))
+
+# Criar uma tabela com os resultados
+result_table <- data.frame(
+  Term = names(odds_ratios),
+  Odds_Ratio = odds_ratios,
+  CI_Lower = conf_int[, 1],
+  CI_Upper = conf_int[, 2]
+)
+
+# Adicionar valores p para interpretação completa
+p_values <- summary(e)$coefficients[, 4]
+result_table$P_Value <- p_values
+
+# Exibir a tabela
+print(result_table)
+
+
+df3.1 = df3
+df3.1$id_participante = NULL
+df3.1$data_de_nascimento = NULL
+df3.1$other_pre_existing_medical_conditions = NULL
+df3.1$date_of_covid_19_test = NULL
+df3.1$entubacao = NULL
+df3.1$dias_uti = NULL
+
