@@ -1,7 +1,7 @@
 pacman::p_load(readxl, ggplot2, tidyverse, janitor, 
                gtsummary, ggcorrplot, ggpubr, performance)
 
-setwd("C:/Users/renato.stein/Downloads")
+setwd("C:/Users/MARCOS.ANTUNES/Downloads")
 
 df = read_excel("covid_vo2.xlsx")
 
