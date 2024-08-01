@@ -1,0 +1,661 @@
+pacman::p_load(readxl, ggplot2, tidyverse, janitor, 
+               gtsummary, ggcorrplot, ggpubr, performance,insight)
+
+setwd("C:/Users/MARCOS.ANTUNES/Downloads")
+
+df = read_excel("covid_vo2.xlsx")
+
+df = clean_names(df)
+df$genero_participante = as.factor(df$genero_participante)
+df$ipaq_questionario = as.factor(df$ipaq_questionario)
+df$entubacao = as.factor(df$entubacao)
+df$uti = as.factor(df$uti)
+df$altura_m = round(df$altura_m,2)
+df$imc = round(df$imc,2)
+df$addenbrooke_memoria_percent = round(df$addenbrooke_memoria_percent*100,2)
+df$addenbrooke_atencao_orientacao_percent = round(df$addenbrooke_atencao_orientacao_percent*100,2)
+df$addenbrooke_fluencia_percent = round(df$addenbrooke_fluencia_percent*100,2)
+df$addenbrooke_linguagem_percent = round(df$addenbrooke_linguagem_percent*100,2)
+df$addenbrooke_visual_espacial_percent = round(df$addenbrooke_visual_espacial_percent*100,2)
+df$ipaq_questionario <- factor(df$ipaq_questionario, 
+                               levels = c("sedentario(a)", "insulficientemente_ativo(a)", 
+                                          "ativo(a)", "muito_ativo(a)"),
+                               labels = c("Sedentary", "Insufficiently Active", "Active", "Very Active"))
+
+
+# Criar tabela de resumo
+demo <- df %>%
+  tbl_summary(
+    include = c("genero_participante", "idade", "imc", "altura_m", "peso_kg",
+                "vo2max", "dias_internacao", "uti"),
+    by = NULL, # Remover agrupamento por uma variável
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})", # Média e desvio padrão para variáveis contínuas
+      all_categorical() ~ "{n} ({p})"   # Contagem e porcentagem para variáveis categóricas
+    ),
+    label = list(
+      genero_participante ~ "Sex, n (%)",
+      idade ~ "Age",
+      altura_m ~ "Height - m",
+      peso_kg ~ "Weight - kg",
+      imc ~ "BMI",
+      vo2max ~ "VO2 - Max",
+      dias_internacao ~ "LOS",
+      uti ~ "ICU, n (%)"
+    ),
+    value = list(genero_participante~"1",
+                 uti~"1"),
+    missing = "no" # Excluir missing
+  ) %>%
+  bold_labels() %>%
+  as_flex_table()
+
+# Exibir tabela
+demo
+
+flextable::save_as_docx(demo,path = "table_demo.docx")
+
+df1 = df
+df1$id_participante = NULL
+df1$data_de_nascimento = NULL
+df1$other_pre_existing_medical_conditions = NULL
+df1$date_of_covid_19_test = NULL
+df1$entubacao = NULL
+df1$dias_uti = NULL
+
+# Renomear colunas
+renomear_colunas <- function(df1) {
+  colnames(df1) <- c("Gender", "Height", "Weight", "BMI", "BMI_Class", "Age", "VO2max",
+                     "IPAQ", "Addenbro_score", "Addenbro_attent", 
+                     "Addenbro_attent_perc", "Addenbro_memo",
+                     "Addenbro_memo_perc", "Addenbro_flue", 
+                     "Addenbro_flue_perc", "Addenbro_lang", 
+                     "Addenbro_lang_perc", "Addenbro_visuos",
+                     "Addenbro_visuos_perc", "LOS", "ICU")
+  return(df1)
+}
+
+# Aplicar função de renomeação ao dataset
+df1 <- renomear_colunas(df1)
+
+# Criar matriz de correlação e plotar
+model.matrix(~0+., data=df1) %>%
+  cor(use="pairwise.complete.obs") %>%
+  ggcorrplot(show.diag=FALSE, type="lower", lab=TRUE, lab_size=2)
+
+
+# Correlation 1 - IPAQ vs ADDENBROOKE
+cor_test1 = cor.test(as.numeric(df$ipaq_questionario), df$addenbrooke_score)
+fig1 = ggplot(df, aes(x = ipaq_questionario, y = addenbrooke_score)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "IPAQ Questionnaire", y = "Percent", title = "Addenbrooke") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  annotate("text", x = 3.2, y = max(df$addenbrooke_score, na.rm = TRUE) - 30, 
+           label = paste("Correlation: ", round(cor_test1$estimate, 2), 
+                         "\n p-value: <0.01"),
+           size = 5, hjust = 0) +
+  theme_classic()
+
+print(fig1)
+
+# Correlation 2 - IPAQ vs Attention/Orientation Percent
+cor_test2 = cor.test(as.numeric(df$ipaq_questionario), df$addenbrooke_atencao_orientacao_percent)
+fig2 = ggplot(df, aes(x = ipaq_questionario, y = addenbrooke_atencao_orientacao_percent)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "IPAQ Questionnaire", y = "Percent", title = "Attention/Orientation") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  annotate("text", x = 0.6, y = max(df$addenbrooke_atencao_orientacao_percent, na.rm = TRUE) - 2, 
+           label = paste("Correlation: ", round(cor_test2$estimate, 2), 
+                         "\n p-value: 0.42"),
+           size = 5, hjust = 0) +
+  theme_classic()
+
+print(fig2)
+
+# Correlation 3 - IPAQ vs Memory Percent
+cor_test3 = cor.test(as.numeric(df$ipaq_questionario), df$addenbrooke_memoria_percent)
+fig3 = ggplot(df, aes(x = ipaq_questionario, y = addenbrooke_memoria_percent)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "IPAQ Questionnaire", y = "Percent", title = "Memory") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  annotate("text", x = 0.6, y = max(df$addenbrooke_memoria_percent, na.rm = TRUE) - 2, 
+           label = paste("Correlation: ", round(cor_test3$estimate, 2), 
+                         "\n p-value: < 0.01"),
+           size = 5, hjust = 0) +
+  theme_classic()
+
+print(fig3)
+
+# Correlation 4 - IPAQ vs Fluency Percent
+cor_test4 = cor.test(as.numeric(df$ipaq_questionario), df$addenbrooke_fluencia_percent)
+fig4 = ggplot(df, aes(x = ipaq_questionario, y = addenbrooke_fluencia_percent)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "IPAQ Questionnaire", y = "Percent", title = "Fluency") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  annotate("text", x = 3.2, y = max(df$addenbrooke_fluencia_percent, na.rm = TRUE) - 65, 
+           label = paste("Correlation: ", round(cor_test4$estimate, 2), 
+                         "\n p-value: 0.10"),
+           size = 5, hjust = 0) +
+  theme_classic()
+
+print(fig4)
+
+# Correlation 5 - IPAQ vs Language Percent
+cor_test5 = cor.test(as.numeric(df$ipaq_questionario), df$addenbrooke_linguagem_percent)
+fig5 = ggplot(df, aes(x = ipaq_questionario, y = addenbrooke_linguagem_percent)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "IPAQ Questionnaire", y = "Percent", title = "Language") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  annotate("text", x = 3.2, y = max(df$addenbrooke_linguagem_percent, na.rm = TRUE) - 27, 
+           label = paste("Correlation: ", round(cor_test5$estimate, 2), 
+                         "\n p-value: <0.01"),
+           size = 5, hjust = 0) +
+  theme_classic()
+
+print(fig5)
+
+# Correlation 6 - IPAQ vs Visuospatial Percent
+cor_test6 = cor.test(as.numeric(df$ipaq_questionario), df$addenbrooke_visual_espacial_percent)
+fig6 = ggplot(df, aes(x = ipaq_questionario, y = addenbrooke_visual_espacial_percent)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "IPAQ Questionnaire", y = "Percent", title = "Visuospatial") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  annotate("text", x = 0.6, y = max(df$addenbrooke_visual_espacial_percent, na.rm = TRUE) - 2, 
+           label = paste("Correlation: ", round(cor_test6$estimate, 2), 
+                         "\n p-value: ", format_p(cor_test6$p.value, digits = 2)),
+           size = 5, hjust = 0) +
+  theme_classic()
+
+print(fig6)
+
+# Combine the plots
+fig1 + fig2 + fig3 + fig4 + fig5 + fig6
+
+
+
+# Regressão linear simples para cada score do Addenbrooke com IPAQ como variável independente
+model1 = lm(addenbrooke_score ~ ipaq_questionario, data = df)
+model2 = lm(addenbrooke_atencao_orientacao_percent ~ ipaq_questionario, data = df)
+model3 = lm(addenbrooke_memoria_percent ~ ipaq_questionario, data = df)
+model4 = lm(addenbrooke_fluencia_percent ~ ipaq_questionario, data = df)
+model5 = lm(addenbrooke_linguagem_percent ~ ipaq_questionario, data = df)
+model6 = lm(addenbrooke_visual_espacial_percent ~ ipaq_questionario, data = df)
+###########
+
+# Regressão linear para cada score do Addenbrooke com variáveis independentes específicas
+test1 = lm(addenbrooke_score ~ factor(Gender), data = df2.1)
+test2 = lm(addenbrooke_score ~ Height, data = df2.1)
+test3 = lm(addenbrooke_score ~ Weight, data = df2.1)
+test4 = lm(addenbrooke_score ~ BMI, data = df2.1)
+test5 = lm(addenbrooke_score ~ Age, data = df2.1)
+test6 = lm(addenbrooke_score ~ LOS, data = df2.1)
+
+test7 = lm(addenbrooke_atencao_orientacao_percent ~ factor(Gender), data = df2.1)
+test8 = lm(addenbrooke_atencao_orientacao_percent ~ Height, data = df2.1)
+test9 = lm(addenbrooke_atencao_orientacao_percent ~ Weight, data = df2.1)
+test10 = lm(addenbrooke_atencao_orientacao_percent ~ BMI, data = df2.1)
+test11 = lm(addenbrooke_atencao_orientacao_percent ~ Age, data = df2.1)
+test12 = lm(addenbrooke_atencao_orientacao_percent ~ LOS, data = df2.1)
+
+test13 = lm(addenbrooke_memoria_percent ~ factor(Gender), data = df2.1)
+test14 = lm(addenbrooke_memoria_percent ~ Height, data = df2.1)
+test15 = lm(addenbrooke_memoria_percent ~ Weight, data = df2.1)
+test16 = lm(addenbrooke_memoria_percent ~ BMI, data = df2.1)
+test17 = lm(addenbrooke_memoria_percent ~ Age, data = df2.1)
+test18 = lm(addenbrooke_memoria_percent ~ LOS, data = df2.1)
+
+test19 = lm(addenbrooke_fluencia_percent ~ factor(Gender), data = df2.1)
+test20 = lm(addenbrooke_fluencia_percent ~ Height, data = df2.1)
+test21 = lm(addenbrooke_fluencia_percent ~ Weight, data = df2.1)
+test22 = lm(addenbrooke_fluencia_percent ~ BMI, data = df2.1)
+test23 = lm(addenbrooke_fluencia_percent ~ Age, data = df2.1)
+test24 = lm(addenbrooke_fluencia_percent ~ LOS, data = df2.1)
+
+test25 = lm(addenbrooke_linguagem_percent ~ factor(Gender), data = df2.1)
+test26 = lm(addenbrooke_linguagem_percent ~ Height, data = df2.1)
+test27 = lm(addenbrooke_linguagem_percent ~ Weight, data = df2.1)
+test28 = lm(addenbrooke_linguagem_percent ~ BMI, data = df2.1)
+test29 = lm(addenbrooke_linguagem_percent ~ Age, data = df2.1)
+test30 = lm(addenbrooke_linguagem_percent ~ LOS, data = df2.1)
+
+test31 = lm(addenbrooke_visual_espacial_percent ~ factor(Gender), data = df2.1)
+test32 = lm(addenbrooke_visual_espacial_percent ~ Height, data = df2.1)
+test33 = lm(addenbrooke_visual_espacial_percent ~ Weight, data = df2.1)
+test34 = lm(addenbrooke_visual_espacial_percent ~ BMI, data = df2.1)
+test35 = lm(addenbrooke_visual_espacial_percent ~ Age, data = df2.1)
+test36 = lm(addenbrooke_visual_espacial_percent ~ LOS, data = df2.1)
+
+##############
+
+
+# Definir os modelos
+models <- list(
+  model1 = lm(addenbrooke_score ~ ipaq_questionario, data = df),
+  model2 = lm(addenbrooke_atencao_orientacao_percent ~ ipaq_questionario, data = df),
+  model3 = lm(addenbrooke_memoria_percent ~ ipaq_questionario, data = df),
+  model4 = lm(addenbrooke_fluencia_percent ~ ipaq_questionario, data = df),
+  model5 = lm(addenbrooke_linguagem_percent ~ ipaq_questionario, data = df),
+  model6 = lm(addenbrooke_visual_espacial_percent ~ ipaq_questionario, data = df),
+  test1 = lm(addenbrooke_score ~ factor(genero_participante), data = df),
+  test2 = lm(addenbrooke_score ~ altura_m, data = df),
+  test3 = lm(addenbrooke_score ~ peso_kg, data = df),
+  test4 = lm(addenbrooke_score ~ imc, data = df),
+  test5 = lm(addenbrooke_score ~ idade, data = df),
+  test6 = lm(addenbrooke_score ~ dias_internacao, data = df),
+  test7 = lm(addenbrooke_atencao_orientacao_percent ~ factor(genero_participante), data = df),
+  test8 = lm(addenbrooke_atencao_orientacao_percent ~ altura_m, data = df),
+  test9 = lm(addenbrooke_atencao_orientacao_percent ~ peso_kg, data = df),
+  test10 = lm(addenbrooke_atencao_orientacao_percent ~ imc, data = df),
+  test11 = lm(addenbrooke_atencao_orientacao_percent ~ idade, data = df),
+  test12 = lm(addenbrooke_atencao_orientacao_percent ~ dias_internacao, data = df),
+  test13 = lm(addenbrooke_memoria_percent ~ factor(genero_participante), data = df),
+  test14 = lm(addenbrooke_memoria_percent ~ altura_m, data = df),
+  test15 = lm(addenbrooke_memoria_percent ~ peso_kg, data = df),
+  test16 = lm(addenbrooke_memoria_percent ~ imc, data = df),
+  test17 = lm(addenbrooke_memoria_percent ~ idade, data = df),
+  test18 = lm(addenbrooke_memoria_percent ~ dias_internacao, data = df),
+  test19 = lm(addenbrooke_fluencia_percent ~ factor(genero_participante), data = df),
+  test20 = lm(addenbrooke_fluencia_percent ~ altura_m, data = df),
+  test21 = lm(addenbrooke_fluencia_percent ~ peso_kg, data = df),
+  test22 = lm(addenbrooke_fluencia_percent ~ imc, data = df),
+  test23 = lm(addenbrooke_fluencia_percent ~ idade, data = df),
+  test24 = lm(addenbrooke_fluencia_percent ~ dias_internacao, data = df),
+  test25 = lm(addenbrooke_linguagem_percent ~ factor(genero_participante), data = df),
+  test26 = lm(addenbrooke_linguagem_percent ~ altura_m, data = df),
+  test27 = lm(addenbrooke_linguagem_percent ~ peso_kg, data = df),
+  test28 = lm(addenbrooke_linguagem_percent ~ imc, data = df),
+  test29 = lm(addenbrooke_linguagem_percent ~ idade, data = df),
+  test30 = lm(addenbrooke_linguagem_percent ~ dias_internacao, data = df),
+  test31 = lm(addenbrooke_visual_espacial_percent ~ factor(genero_participante), data = df),
+  test32 = lm(addenbrooke_visual_espacial_percent ~ altura_m, data = df),
+  test33 = lm(addenbrooke_visual_espacial_percent ~ peso_kg, data = df),
+  test34 = lm(addenbrooke_visual_espacial_percent ~ imc, data = df),
+  test35 = lm(addenbrooke_visual_espacial_percent ~ idade, data = df),
+  test36 = lm(addenbrooke_visual_espacial_percent ~ dias_internacao, data = df),
+  a = lm(addenbrooke_score ~ ipaq_questionario, data = df),
+  b = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante), data = df),
+  c = lm(addenbrooke_score ~ ipaq_questionario + altura_m, data = df),
+  d = lm(addenbrooke_score ~ ipaq_questionario + peso_kg, data = df),
+  e = lm(addenbrooke_score ~ ipaq_questionario + imc, data = df),
+  f = lm(addenbrooke_score ~ ipaq_questionario + idade, data = df),
+  g = lm(addenbrooke_score ~ ipaq_questionario + dias_internacao, data = df),
+  h = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + altura_m, data = df),
+  i = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + peso_kg, data = df),
+  j = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + imc, data = df),
+  k = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + idade, data = df),
+  l = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + dias_internacao, data = df)
+)
+
+# Definir os modelos
+models <- list(
+  model1 = lm(addenbrooke_score ~ ipaq_questionario, data = df),
+  model2 = lm(addenbrooke_atencao_orientacao_percent ~ ipaq_questionario, data = df),
+  model3 = lm(addenbrooke_memoria_percent ~ ipaq_questionario, data = df),
+  model4 = lm(addenbrooke_fluencia_percent ~ ipaq_questionario, data = df),
+  model5 = lm(addenbrooke_linguagem_percent ~ ipaq_questionario, data = df),
+  model6 = lm(addenbrooke_visual_espacial_percent ~ ipaq_questionario, data = df),
+  test1 = lm(addenbrooke_score ~ factor(genero_participante), data = df),
+  test2 = lm(addenbrooke_score ~ altura_m, data = df),
+  test3 = lm(addenbrooke_score ~ peso_kg, data = df),
+  test4 = lm(addenbrooke_score ~ imc, data = df),
+  test5 = lm(addenbrooke_score ~ idade, data = df),
+  test6 = lm(addenbrooke_score ~ dias_internacao, data = df),
+  test7 = lm(addenbrooke_atencao_orientacao_percent ~ factor(genero_participante), data = df),
+  test8 = lm(addenbrooke_atencao_orientacao_percent ~ altura_m, data = df),
+  test9 = lm(addenbrooke_atencao_orientacao_percent ~ peso_kg, data = df),
+  test10 = lm(addenbrooke_atencao_orientacao_percent ~ imc, data = df),
+  test11 = lm(addenbrooke_atencao_orientacao_percent ~ idade, data = df),
+  test12 = lm(addenbrooke_atencao_orientacao_percent ~ dias_internacao, data = df),
+  test13 = lm(addenbrooke_memoria_percent ~ factor(genero_participante), data = df),
+  test14 = lm(addenbrooke_memoria_percent ~ altura_m, data = df),
+  test15 = lm(addenbrooke_memoria_percent ~ peso_kg, data = df),
+  test16 = lm(addenbrooke_memoria_percent ~ imc, data = df),
+  test17 = lm(addenbrooke_memoria_percent ~ idade, data = df),
+  test18 = lm(addenbrooke_memoria_percent ~ dias_internacao, data = df),
+  test19 = lm(addenbrooke_fluencia_percent ~ factor(genero_participante), data = df),
+  test20 = lm(addenbrooke_fluencia_percent ~ altura_m, data = df),
+  test21 = lm(addenbrooke_fluencia_percent ~ peso_kg, data = df),
+  test22 = lm(addenbrooke_fluencia_percent ~ imc, data = df),
+  test23 = lm(addenbrooke_fluencia_percent ~ idade, data = df),
+  test24 = lm(addenbrooke_fluencia_percent ~ dias_internacao, data = df),
+  test25 = lm(addenbrooke_linguagem_percent ~ factor(genero_participante), data = df),
+  test26 = lm(addenbrooke_linguagem_percent ~ altura_m, data = df),
+  test27 = lm(addenbrooke_linguagem_percent ~ peso_kg, data = df),
+  test28 = lm(addenbrooke_linguagem_percent ~ imc, data = df),
+  test29 = lm(addenbrooke_linguagem_percent ~ idade, data = df),
+  test30 = lm(addenbrooke_linguagem_percent ~ dias_internacao, data = df),
+  test31 = lm(addenbrooke_visual_espacial_percent ~ factor(genero_participante), data = df),
+  test32 = lm(addenbrooke_visual_espacial_percent ~ altura_m, data = df),
+  test33 = lm(addenbrooke_visual_espacial_percent ~ peso_kg, data = df),
+  test34 = lm(addenbrooke_visual_espacial_percent ~ imc, data = df),
+  test35 = lm(addenbrooke_visual_espacial_percent ~ idade, data = df),
+  test36 = lm(addenbrooke_visual_espacial_percent ~ dias_internacao, data = df),
+  a = lm(addenbrooke_score ~ ipaq_questionario, data = df),
+  b = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante), data = df),
+  c = lm(addenbrooke_score ~ ipaq_questionario + altura_m, data = df),
+  d = lm(addenbrooke_score ~ ipaq_questionario + peso_kg, data = df),
+  e = lm(addenbrooke_score ~ ipaq_questionario + imc, data = df),
+  f = lm(addenbrooke_score ~ ipaq_questionario + idade, data = df),
+  g = lm(addenbrooke_score ~ ipaq_questionario + dias_internacao, data = df),
+  h = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + altura_m, data = df),
+  i = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + peso_kg, data = df),
+  j = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + imc, data = df),
+  k = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + idade, data = df),
+  l = lm(addenbrooke_score ~ ipaq_questionario + factor(genero_participante) + dias_internacao, data = df)
+)
+
+
+# Função para obter os resultados dos modelos com intervalos de confiança e variável dependente
+get_model_summary <- function(model, model_name) {
+  dependent_var <- all.vars(formula(model))[1]
+  tidy(model, conf.int = TRUE) %>%
+    mutate(
+      term = recode(term, `(Intercept)` = "Intercept"),
+      model = model_name,
+      dependent_variable = dependent_var
+    )
+}
+
+# Aplicar a função a todos os modelos e combinar os resultados usando imap
+results <- imap(models, ~get_model_summary(.x, .y)) %>%
+  bind_rows()
+
+# Exibir a tabela de resultados
+print(results)
+
+writexl::write_xlsx(results,path = "resultados_regres.xlsx")
+
+
+
+
+
+
+
+
+
+
+# Criação de df2: todas as variáveis exceto aquelas de addenbrooke
+df2 <- df %>% 
+  select(-starts_with("Addenbro"))
+
+# Criação de df3: todas as variáveis exceto ipaq
+df3 <- df %>% 
+  select(-ipaq_questionario)
+
+# Verificando a estrutura dos novos dataframes
+str(df2)
+str(df3)
+
+df2.1 = df2
+df2.1$id_participante = NULL
+df2.1$data_de_nascimento = NULL
+df2.1$other_pre_existing_medical_conditions = NULL
+df2.1$date_of_covid_19_test = NULL
+df2.1$entubacao = NULL
+df2.1$dias_uti = NULL
+
+renomear_colunas1 <- function(df2.1) {
+  colnames(df2.1) <- c("Gender", "Height", "Weight", "BMI", "BMI_Class", "Age", "VO2max",
+                       "IPAQ", "LOS", "ICU")
+  return(df2.1)
+}
+
+# Aplicar função de renomeação ao dataset
+df2.1 <- renomear_colunas1(df2.1)
+
+# Criar matriz de correlação e plotar
+model.matrix(~0+., data=df2.1) %>%
+  cor(use="pairwise.complete.obs") %>%
+  ggcorrplot(show.diag=FALSE, type="lower", lab=TRUE, lab_size=2)
+
+# Listar combinações de variáveis independentes
+test = glm(factor(IPAQ) ~ factor(Gender), family = "binomial", df2.1)
+test1 = glm(factor(IPAQ) ~ Height, family = "binomial", df2.1)
+test2 = glm(factor(IPAQ) ~ Weight, family = "binomial", df2.1)
+test3 = glm(factor(IPAQ) ~ BMI, family = "binomial", df2.1)
+test4 = glm(factor(IPAQ) ~ Age, family = "binomial", df2.1)
+test5 = glm(factor(IPAQ) ~ LOS, family = "binomial", df2.1)
+
+a0 = glm(factor(IPAQ) ~ , family = "binomial", df2.1)
+a = glm(factor(IPAQ) ~ VO2max, family = "binomial", df2.1)
+b = glm(factor(IPAQ) ~ VO2max + factor(Gender), family = "binomial", df2.1)
+c = glm(factor(IPAQ) ~ VO2max + Height, family = "binomial", df2.1)
+d = glm(factor(IPAQ) ~ VO2max + Weight, family = "binomial", df2.1)
+e = glm(factor(IPAQ) ~ VO2max + BMI, family = "binomial", df2.1)
+f = glm(factor(IPAQ) ~ VO2max + Age, family = "binomial", df2.1)
+g = glm(factor(IPAQ) ~ VO2max + LOS, family = "binomial", df2.1)
+h = glm(factor(IPAQ) ~ VO2max + factor(Gender) + Height, family = "binomial", df2.1)
+i = glm(factor(IPAQ) ~ VO2max + factor(Gender) + Weight, family = "binomial", df2.1)
+j = glm(factor(IPAQ) ~ VO2max + factor(Gender) + BMI, family = "binomial", df2.1)
+k = glm(factor(IPAQ) ~ VO2max + factor(Gender) + Age, family = "binomial", df2.1)
+l = glm(factor(IPAQ) ~ VO2max + factor(Gender) + LOS, family = "binomial", df2.1)
+
+result1 = compare_performance(a,b,c,d,e,f,g,h,i,j,l,rank = TRUE,verbose = TRUE) %>% as.data.frame()
+writexl::write_xlsx(result1,path = "result1.xlsx")
+
+# Calcular as odds ratios
+odds_ratios <- exp(coef(e))
+
+# Calcular os intervalos de confiança das odds ratios
+conf_int <- exp(confint(e))
+
+# Criar uma tabela com os resultados
+result_table <- data.frame(
+  Term = names(odds_ratios),
+  Odds_Ratio = odds_ratios,
+  CI_Lower = conf_int[, 1],
+  CI_Upper = conf_int[, 2]
+)
+
+# Adicionar valores p para interpretação completa
+p_values <- summary(e)$coefficients[, 4]
+result_table$P_Value <- p_values
+
+# Exibir a tabela
+print(result_table)
+
+
+df3.1 = df3
+df3.1$id_participante = NULL
+df3.1$data_de_nascimento = NULL
+df3.1$other_pre_existing_medical_conditions = NULL
+df3.1$date_of_covid_19_test = NULL
+df3.1$entubacao = NULL
+df3.1$dias_uti = NULL
+
+renomear_colunas2 <- function(df3.1) {
+  colnames(df3.1) <- c("Gender", "Height", "Weight", "BMI", "BMI_Class", "Age", "VO2max",
+                       "Addenbro_score", "Addenbro_attent", 
+                       "Addenbro_attent_perc", "Addenbro_memo",
+                       "Addenbro_memo_perc", "Addenbro_flue", 
+                       "Addenbro_flue_perc", "Addenbro_lang", 
+                       "Addenbro_lang_perc", "Addenbro_visuos",
+                       "Addenbro_visuos_perc", "LOS", "ICU")
+  return(df3.1)
+}
+
+
+# Aplicar função de renomeação ao dataset
+df3.1 <- renomear_colunas2(df3.1)
+
+# Criar matriz de correlação e plotar
+model.matrix(~0+., data=df3.1) %>%
+  cor(use="pairwise.complete.obs") %>%
+  ggcorrplot(show.diag=FALSE, type="lower", lab=TRUE, lab_size=2)
+
+
+# Identificar as variáveis que começam com "Addenbrooke" e terminam com "percent"
+addenbrooke_vars <- grep("^addenbrooke.*percent$", names(df), value = TRUE)
+
+# Função para criar os gráficos
+create_plot <- function(var_name, var_label) {
+  cor_test <- cor.test(df[[var_name]], df$vo2max)
+  
+  ggplot(df, aes_string(x = var_name, y = "vo2max")) +
+    geom_jitter(width = 0.2, height = 0, alpha = 0.6) +
+    stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+    geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+    labs(x = var_label, y = "VO2 Max") +
+    theme(
+      axis.title.x = element_text(face = "bold"),
+      axis.title.y = element_text(face = "bold")
+    ) +
+    annotate("text", x = 25, y = max(df$vo2max) - 10, 
+             label = paste("Correlation: ", round(cor_test$estimate, 3), 
+                           "\n p-value: ", format_p(cor_test$p.value, digits = 2)),
+             size = 5, hjust = 0) +
+    theme_classic()
+}
+
+# Variáveis e labels
+var_names <- c("addenbrooke_atencao_orientacao_percent", 
+               "addenbrooke_memoria_percent", 
+               "addenbrooke_fluencia_percent", 
+               "addenbrooke_linguagem_percent", 
+               "addenbrooke_visual_espacial_percent")
+
+var_labels <- c("Addenbrooke - Attention (%)", 
+                "Addenbrooke - Memory (%)", 
+                "Addenbrooke - Fluency (%)", 
+                "Addenbrooke - Language (%)", 
+                "Addenbrooke - Visual-Spatial (%)")
+
+# Criar gráficos
+plots <- lapply(seq_along(var_names), function(i) {
+  create_plot(var_names[i], var_labels[i]) + labs(title = letters[i])
+})
+
+# Combinar gráficos com patchwork
+combined_plot <- wrap_plots(plots, ncol = 2)
+
+# Exibir o plot combinado
+print(combined_plot)
+
+
+cor_test3 <- cor.test(df3.1$Addenbro_score, df3.1$VO2max)
+
+
+ggplot(df3.1, aes(x = Addenbro_score, y = VO2max)) +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Adiciona jitter para melhor visualização dos pontos
+  stat_summary(fun.data = "mean_se", geom = "pointrange", color = "red") +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "blue") +
+  labs(x = "Addenbrooke - General score", y = "VO2 Max") +
+  theme(
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold")
+  ) +
+  annotate("text", x = 60, y = max(df$vo2max) - 2, 
+           label = paste("Correlation: ", round(cor_test3$estimate, 3), 
+                         "\n p-value: ", format_p(cor_test3$p.value, digits = 2)),
+           size = 5, hjust = 0)+
+  theme_classic()
+
+# Supondo que df3.1 já esteja carregado no ambiente
+# df3.1 <- read_csv("path_to_your_data.csv") # Ajuste esta linha para carregar seus dados reais
+
+# Garantir que variáveis categóricas sejam fatores
+df3.1 <- df3.1 %>%
+  mutate(Gender = as.factor(Gender),
+         ICU = as.factor(ICU))
+
+# Identificar todas as variáveis dependentes que começam com "Addenbro"
+dependent_vars <- names(df3.1)[grepl("^Addenbro", names(df3.1))]
+
+# Definir variáveis independentes, excluindo aquelas que começam com "Addenbro"
+independent_vars <- setdiff(names(df3.1), dependent_vars)
+
+# Função para criar fórmula para GLM
+create_formula <- function(dependent, independents) {
+  paste(dependent, "~", paste(independents, collapse = " + "))
+}
+
+# Inicializar lista para armazenar resultados dos modelos
+model_results <- list()
+
+# Inicializar lista para armazenar resultados dos modelos
+model_results <- list()
+
+# Criar e avaliar GLM para cada variável dependente
+for (dep_var in dependent_vars) {
+  # Incluir VO2max e criar fórmula
+  independent_vars_with_vo2max <- c(independent_vars, "VO2max")
+  formula <- as.formula(create_formula(dep_var, independent_vars_with_vo2max))
+  
+  # Ajustar modelo
+  model <- glm(formula, data = df3.1, family = gaussian)
+  
+  # Avaliar desempenho do modelo
+  model_performance <- performance::model_performance(model)
+  
+  # Obter coeficientes, intervalos de confiança e valores p
+  coefs <- summary(model)$coefficients
+  confints <- confint(model)
+  
+  # Armazenar resultados
+  model_results[[dep_var]] <- list(
+    model = model,
+    performance = model_performance,
+    coefs = coefs,
+    confints = confints
+  )
+}
+
+# Criar um dataframe para armazenar os resultados de desempenho dos modelos
+model_performance_df <- do.call(rbind, lapply(names(model_results), function(dep_var) {
+  coefs <- model_results[[dep_var]]$coefs
+  confints <- model_results[[dep_var]]$confints
+  data.frame(
+    dependent_var = dep_var,
+    term = rownames(coefs),
+    estimate = coefs[, "Estimate"],
+    std_error = coefs[, "Std. Error"],
+    p_value = coefs[, "Pr(>|t|)"],
+    conf_low = confints[, 1],
+    conf_high = confints[, 2],
+    AIC = model_results[[dep_var]]$performance$AIC
+  )
+}))
+
+# Classificar os modelos pelo AIC
+model_performance_df <- model_performance_df %>%
+  arrange(AIC) %>%
+  group_by(dependent_var) %>%
+  mutate(rank = row_number())
+
+writexl::write_xlsx(model_performance_df, "model_details.xlsx")
